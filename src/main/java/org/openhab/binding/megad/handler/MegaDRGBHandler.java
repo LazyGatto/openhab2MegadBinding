@@ -285,13 +285,12 @@ public class MegaDRGBHandler extends BaseThingHandler {
                 }
             }
         }
-        logger.debug("get Command");
     }
 
     public void refresh() {
         MegaDDeviceHandler bridgeDeviceHandler = this.bridgeDeviceHandler;
         if ((bridgeDeviceHandler != null) && (bridgeDeviceHandler.getThing().getStatus().equals(ThingStatus.ONLINE))) {
-            logger.debug("Refresh port {} at {}", configuration.port, thing.getLabel());
+            logger.trace("Refresh port {} at {}", configuration.port, thing.getLabel());
             for (Channel channel : getThing().getChannels()) {
                 if (isLinked(channel.getUID().getId())) {
                     if (channel.getUID().getId().equals(MegaDBindingConstants.CHANNEL_RGB)) {

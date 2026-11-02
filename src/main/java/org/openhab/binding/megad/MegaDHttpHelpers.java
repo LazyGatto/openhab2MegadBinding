@@ -43,6 +43,8 @@ public class MegaDHttpHelpers {
     @Nullable
     HttpClient httpClient = null;
     private static final Charset CP1251 = Charset.forName("windows-1251");
+    private static final int DEFAULT_TIMEOUT_MS = 300;
+    private int defaultTimeout = DEFAULT_TIMEOUT_MS;
 
     public MegaDHTTPResponse request(String urlString, int timeout) {
         MegaDHTTPResponse megaDHTTPResponse = new MegaDHTTPResponse();
@@ -58,8 +60,6 @@ public class MegaDHttpHelpers {
                         megaDHTTPResponse.setResponseCode(HttpStatus.OK_200);
                         megaDHTTPResponse
                                 .setResponseResult(new String(response.getContent(), CP1251).trim().replace("\"", ""));
-                        logger.trace("Http response from url {} is {}", urlString,
-                                megaDHTTPResponse.getResponseResult());
                     } else {
                         logger.error("Megad request resulted in HTTP {} with message: {}", response.getStatus(),
                                 response.getReason());
@@ -73,7 +73,17 @@ public class MegaDHttpHelpers {
     }
 
     public MegaDHTTPResponse request(String urlString) {
-        return request(urlString, 300);
+        return request(urlString, defaultTimeout);
+    }
+
+    /**
+     * Overrides the default timeout of the plain {@link #request(String)} overload. The value comes from the bridge
+     * thing configuration ({@code timeout}).
+     *
+     * @param timeoutMs request timeout in milliseconds, non-positive values fall back to {@link #DEFAULT_TIMEOUT_MS}
+     */
+    public void setDefaultTimeout(int timeoutMs) {
+        this.defaultTimeout = timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
     }
 
     public void sendToLCDrawStream(String hostname, String request) {
@@ -89,7 +99,6 @@ public class MegaDHttpHelpers {
                 data[degreeIndex] = (byte) 0xdf;
             }
             output.write(data);
-            logger.trace("LCD send: {}", data);
         } catch (UnknownHostException ex) {
             logger.error("Server not found: {}", ex.getMessage());
         } catch (IOException ex) {

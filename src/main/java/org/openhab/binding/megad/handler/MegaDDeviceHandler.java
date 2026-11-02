@@ -41,7 +41,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
@@ -115,6 +117,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
     Long lastRefresh = 0L;
     Long lastPropertiesRefresh = 0L;
 
+    /** Cached result of {@code cmd=all} is shared by every port of the bridge, so keep it short. */
+    private static final long ALL_PORTS_CACHE_TTL_MS = TimeUnit.MILLISECONDS.toMillis(500);
+    private final AtomicInteger consecutivePollFailures = new AtomicInteger();
+    private volatile long lastAllPortsPoll;
+    private volatile Map<String, String> allPortsSnapshot = Map.of();
+
     public BlockingQueue<MegaDPooler> sendQueue = new LinkedBlockingQueue<>();
     public BlockingQueue<MegaDRs485Handler> sendRs485Queue = new LinkedBlockingQueue<>();
 
@@ -140,6 +148,7 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
     @Override
     public void initialize() {
         config = getConfigAs(MegaDConfiguration.class);
+        httpHelper.setDefaultTimeout(config.timeout);
         megaDHardware = new MegaDHardware(Objects.requireNonNull(config).hostname, config.password, httpHelper);
         MegaDHTTPResponse response = httpHelper.request(megaUrl("tget=1"));
         if (response.getResponseCode() >= 400) {
@@ -220,7 +229,9 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
 
         final ScheduledFuture<?> refreshPollingJob = this.refreshPollingJob;
         if (refreshPollingJob == null || refreshPollingJob.isCancelled()) {
-            this.refreshPollingJob = scheduler.scheduleWithFixedDelay(this::refresh, 0, 1000, TimeUnit.MILLISECONDS);
+            // Stagger the start of every bridge: with 10 bridges an aligned start produced a request storm.
+            this.refreshPollingJob = scheduler.scheduleWithFixedDelay(this::refresh,
+                    ThreadLocalRandom.current().nextLong(1000), 1000, TimeUnit.MILLISECONDS);
         } else {
             updateStatus(ThingStatus.OFFLINE);
         }
@@ -252,6 +263,72 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                 sendQueue.add(pooler);
             }
         }
+    }
+
+    /**
+     * Returns the cached state of every port of this bridge in a single {@code cmd=all} answer instead of one
+     * {@code cmd=get} per port. The snapshot is shared by all ports of the bridge, so it is refreshed at most twice a
+     * second.
+     *
+     * @return port index to value, or null when the device did not answer
+     */
+    public @Nullable Map<String, String> getAllPortsStatus() {
+        long now = System.currentTimeMillis();
+        if (now - lastAllPortsPoll > ALL_PORTS_CACHE_TTL_MS) {
+            MegaDHTTPResponse response = httpHelper.request(megaUrl("cmd=all"));
+            if (response.getResponseCode() == 200) {
+                lastAllPortsPoll = now;
+                allPortsSnapshot = buildPortStatusMap(response.getResponseResult());
+            } else {
+                allPortsSnapshot = Map.of();
+                return null;
+            }
+        }
+        return allPortsSnapshot;
+    }
+
+    private static Map<String, String> buildPortStatusMap(String allValue) {
+        String[] ports = allValue.split(";");
+        Map<String, String> portStatusMap = new HashMap<>();
+        for (int i = 0; i < ports.length; i++) {
+            portStatusMap.put(Integer.toString(i), ports[i]);
+        }
+        return portStatusMap;
+    }
+
+    /**
+     * Reads one port out of the {@code cmd=all} snapshot.
+     *
+     * @param port port number of the controller
+     * @return the raw value, or an empty string when it is absent - the caller must fall back to a per port request
+     */
+    private String snapshotStatus(int port) {
+        Map<String, String> snapshot = getAllPortsStatus();
+        if (snapshot != null) {
+            return snapshot.getOrDefault(Integer.toString(port), "");
+        }
+        return "";
+    }
+
+    private void reportPollSuccess() {
+        consecutivePollFailures.set(0);
+        if (!thing.getStatus().equals(ThingStatus.ONLINE)) {
+            logger.info("Device {} answered again, marking ONLINE", config.hostname);
+            updateStatus(ThingStatus.ONLINE);
+        }
+    }
+
+    private void reportPollFailure() {
+        int failures = consecutivePollFailures.incrementAndGet();
+        logger.debug("Device {} did not answer poll {} of {}", config.hostname, failures, getFailLimit());
+        if (failures >= getFailLimit() && thing.getStatus().equals(ThingStatus.ONLINE)) {
+            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
+                    "Device not responding to " + failures + " consecutive polls");
+        }
+    }
+
+    private int getFailLimit() {
+        return Math.max(1, config.failLimit);
     }
 
     private void refreshRs485ThreadJob() {
@@ -336,9 +413,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                 }
                             }
                         } else if (portType.equals(MegaDTypesEnum.IN)) {
-                            String response = httpHelper
-                                    .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
-                                    .getResponseResult();
+                            String response = snapshotStatus(megaDPortsHandler.configuration.port);
+                            if (response.isEmpty()) {
+                                response = httpHelper
+                                        .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
+                                        .getResponseResult();
+                            }
                             if (response.contains("/")) {
                                 String[] values = response.split("/");
                                 if (values[0].contains("ON") || values[0].contains("OFF")) {
@@ -356,9 +436,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                 }
                             }
                         } else if (portType.equals(MegaDTypesEnum.OUT)) {
-                            String response = httpHelper
-                                    .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
-                                    .getResponseResult();
+                            String response = snapshotStatus(megaDPortsHandler.configuration.port);
+                            if (response.isEmpty()) {
+                                response = httpHelper
+                                        .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
+                                        .getResponseResult();
+                            }
                             if (response.contains("/")) {
                                 String[] values = response.split("/");
                                 if (values[0].contains("ON") || values[0].contains("OFF")) {
@@ -376,9 +459,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                 }
                             }
                         } else if (portType.equals(MegaDTypesEnum.ADC)) {
-                            String response = httpHelper
-                                    .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
-                                    .getResponseResult();
+                            String response = snapshotStatus(megaDPortsHandler.configuration.port);
+                            if (response.isEmpty()) {
+                                response = httpHelper
+                                        .request(megaUrl("pt=" + megaDPortsHandler.configuration.port + "&cmd=get"))
+                                        .getResponseResult();
+                            }
                             megaDPortsHandler.updateChannel(MegaDBindingConstants.CHANNEL_ADC, response);
                         } else if (portType.equals(MegaDTypesEnum.I2C)) {
                             MegaDExtendersEnum megaDExtendersEnum = megaDPortsHandler.port.getExtenders();
@@ -475,14 +561,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                 }
                 if (pooler.megaDDeviceHandler != null) {
                     if (config.ping) {
-                        int response = httpHelper.request(megaUrl("tget=1")).getResponseCode();
-                        if (response == 200) {
-                            if (!thing.getStatus().equals(ThingStatus.ONLINE)) {
-                                updateStatus(ThingStatus.ONLINE);
-                            }
+                        // cmd=all doubles as the availability check: it answers when the device is reachable and its
+                        // result feeds the per port snapshot used above.
+                        if (getAllPortsStatus() != null) {
+                            reportPollSuccess();
                         } else {
-                            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
-                                    "Device not responding on ping");
+                            reportPollFailure();
                         }
                     }
                     long now = System.currentTimeMillis();
@@ -794,7 +878,6 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                             bufPack[cell] = fwPacket[i][j];
                                             cell++;
                                         }
-                                        logger.trace("Sending packet {} is {}", i, bufPack);
                                         float progress = (float) i / fullCells;
                                         logger.debug("Writing firmware ... {}%", (int) (progress * 100));
                                         if (progressChannel != null) {

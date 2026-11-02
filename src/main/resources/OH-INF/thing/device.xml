@@ -19,9 +19,20 @@
 				<default>sec</default>
 			</parameter>
 			<parameter name="ping" type="boolean" required="true">
-				<label>Ping device</label>
-				<description>Set to true if you want to ping mega for accessibility once per second</description>
+				<label>Check device availability</label>
+				<description>Once per second the device answers a single "all ports" request that also refreshes port
+					states; the device is marked OFFLINE only after several consecutive missed answers</description>
 				<default>true</default>
+			</parameter>
+			<parameter name="timeout" type="integer" min="50" unit="ms">
+				<label>Request timeout</label>
+				<description>HTTP request timeout to the device in milliseconds</description>
+				<default>300</default>
+			</parameter>
+			<parameter name="failLimit" type="integer" min="1">
+				<label>Offline threshold</label>
+				<description>Number of consecutive unanswered polls before the device is marked OFFLINE</description>
+				<default>3</default>
 			</parameter>
 			<parameter name="setup" type="boolean" required="true">
 				<label>Auto setup</label>

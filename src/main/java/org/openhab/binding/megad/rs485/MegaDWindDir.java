@@ -26,8 +26,6 @@ import org.openhab.core.thing.ChannelUID;
 import org.openhab.core.thing.Thing;
 import org.openhab.core.thing.binding.builder.ChannelBuilder;
 import org.openhab.core.thing.type.ChannelTypeUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * The {@link MegaDWindDir} is responsible for rs485/modbus feature of megad
@@ -36,7 +34,6 @@ import org.slf4j.LoggerFactory;
  */
 @NonNullByDefault
 public class MegaDWindDir implements MegaDRS485Interface {
-    final Logger logger = LoggerFactory.getLogger(MegaDWindDir.class);
     String address;
     MegaDDeviceHandler bridgeHandler;
     private final MegaDHttpHelpers httpHelper = new MegaDHttpHelpers();
@@ -63,7 +60,6 @@ public class MegaDWindDir implements MegaDRS485Interface {
                 + Objects.requireNonNull(bridgeHandler).getThing().getConfiguration().get("password").toString()
                 + "/?uart_rx=1&mode=rs485";
         String updateRequest = httpHelper.request(result).getResponseResult();
-        logger.trace("Wind angle answer is: {}", updateRequest);
         String[] request = updateRequest.split("[|]");
         return request;
     }

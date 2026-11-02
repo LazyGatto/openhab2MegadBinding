@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -164,7 +165,6 @@ public class MegaDPortsHandler extends BaseThingHandler {
         final MegaDDeviceHandler bridgeDeviceHandler = this.bridgeDeviceHandler;
         if (bridgeDeviceHandler != null) {
             if (channelUID.getId().equals(MegaDBindingConstants.CHANNEL_OUT)) {
-                logger.trace("CHANNEL_OUT");
                 Channel channel = thing.getChannel(MegaDBindingConstants.CHANNEL_OUT);
                 if (channel != null) {
                     if (channel.getConfiguration().get("invert") != null) {
@@ -895,8 +895,10 @@ public class MegaDPortsHandler extends BaseThingHandler {
             if (configuration.refresh != 0) {
                 logger.debug("Thing {}, refresh interval is {} sec", getThing().getUID(), configuration.refresh);
                 freeRefreshJob();
-                refreshPollingJob = scheduler.scheduleWithFixedDelay(this::refresh, 0, configuration.refresh,
-                        TimeUnit.SECONDS);
+                // Stagger the start so that many ports do not hit the controller in the same tick.
+                refreshPollingJob = scheduler.scheduleWithFixedDelay(this::refresh,
+                        ThreadLocalRandom.current().nextLong(Math.max(1, configuration.refresh)),
+                        configuration.refresh, TimeUnit.SECONDS);
             }
         } finally {
             initializing.set(false);
@@ -914,6 +916,7 @@ public class MegaDPortsHandler extends BaseThingHandler {
             updateStatus(ThingStatus.UNINITIALIZED, ThingStatusDetail.BRIDGE_UNINITIALIZED, "Bridge is not defined");
             return;
         }
+        httpHelper.setDefaultTimeout(bridgeDeviceHandler.config.timeout);
 
         if (bridgeDeviceHandler.getThing().getStatus() != ThingStatus.ONLINE) {
             logger.debug("Bridge {} is {}, thing {} will stay OFFLINE", bridgeDeviceHandler.getThing().getUID(),
@@ -1334,11 +1337,10 @@ public class MegaDPortsHandler extends BaseThingHandler {
     }
 
     public void refresh() {
-        logger.debug("Trying to refresh port {} at {} with UID {}", configuration.port, thing.getLabel(),
+        logger.trace("Trying to refresh port {} at {} with UID {}", configuration.port, thing.getLabel(),
                 thing.getUID());
         MegaDDeviceHandler bridgeDeviceHandler = this.bridgeDeviceHandler;
         if ((bridgeDeviceHandler != null) && (bridgeDeviceHandler.getThing().getStatus().equals(ThingStatus.ONLINE))) {
-            logger.debug("Refresh port {} at {}", configuration.port, thing.getLabel());
             MegaDPooler pooler = new MegaDPooler();
             pooler.megaDPortsHandler = this;
             bridgeDeviceHandler.sendQueue.add(pooler);

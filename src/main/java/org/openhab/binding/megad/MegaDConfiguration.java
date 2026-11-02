@@ -28,6 +28,8 @@ public class MegaDConfiguration {
     public String password = "";
     public int refresh = 0;
     public boolean ping = true;
+    public int timeout = 300;
+    public int failLimit = 3;
     public boolean setup = true;
     public String red = "";
     public String green = "";
