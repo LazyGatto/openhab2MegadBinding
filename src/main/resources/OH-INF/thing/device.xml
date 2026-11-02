@@ -26,7 +26,8 @@
 			</parameter>
 			<parameter name="timeout" type="integer" min="50" unit="ms">
 				<label>Request timeout</label>
-				<description>HTTP request timeout to the device in milliseconds</description>
+				<description>HTTP request timeout to the device in milliseconds; increase it if the device is busy and
+					drops short requests</description>
 				<default>300</default>
 			</parameter>
 			<parameter name="failLimit" type="integer" min="1">
