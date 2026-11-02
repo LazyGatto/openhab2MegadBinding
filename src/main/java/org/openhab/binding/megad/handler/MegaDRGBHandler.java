@@ -83,6 +83,7 @@ public class MegaDRGBHandler extends BaseThingHandler {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
                 }
                 if (reconnect == 10) {
                     logger.error("Bridge is offline during 10 seconds");

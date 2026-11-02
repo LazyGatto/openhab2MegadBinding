@@ -64,7 +64,12 @@ public class MegaDHttpHelpers {
                         logger.error("Megad request resulted in HTTP {} with message: {}", response.getStatus(),
                                 response.getReason());
                     }
-                } catch (InterruptedException | TimeoutException | ExecutionException e) {
+                } catch (InterruptedException e) {
+                    // Keep the interrupt status: this call consumes it (Future.get() clears the flag),
+                    // and the refresh loops below rely on it to exit from dispose().
+                    logger.debug("Request to {} interrupted", urlString);
+                    Thread.currentThread().interrupt();
+                } catch (TimeoutException | ExecutionException e) {
                     logger.error("Request to {} failed: {}", urlString, e.getLocalizedMessage());
                 }
             }

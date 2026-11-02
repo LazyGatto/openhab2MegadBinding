@@ -58,6 +58,7 @@ public class MegaDMideaProtocol implements MegaDRS485Interface {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         result = "http://"
                 + Objects.requireNonNull(bridgeHandler).getThing().getConfiguration().get("hostname").toString() + "/"
@@ -97,6 +98,7 @@ public class MegaDMideaProtocol implements MegaDRS485Interface {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         String cmd = "AAC3" + String.format("%02X", Integer.parseInt(address)) + "008000";
         int crc = (int) Long.parseLong("C3", 16);
@@ -196,6 +198,7 @@ public class MegaDMideaProtocol implements MegaDRS485Interface {
             try {
                 Thread.sleep(200);
             } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
             }
             result = "http://"
                     + Objects.requireNonNull(bridgeHandler).getThing().getConfiguration().get("hostname").toString()

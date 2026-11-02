@@ -54,6 +54,7 @@ public class MegaDWindAnemometer implements MegaDRS485Interface {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         result = "http://"
                 + Objects.requireNonNull(bridgeHandler).getThing().getConfiguration().get("hostname").toString() + "/"

@@ -54,6 +54,7 @@ public class MegaDWBMAP6S implements MegaDModbusPowermeterInterface {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         result = "http://" + bridgeHandler.getThing().getConfiguration().get("hostname").toString() + "/"
                 + bridgeHandler.getThing().getConfiguration().get("password").toString() + "/?uart_rx=1&mode=rs485";

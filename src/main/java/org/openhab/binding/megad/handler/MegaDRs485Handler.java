@@ -83,6 +83,7 @@ public class MegaDRs485Handler extends BaseThingHandler {
         try {
             Thread.sleep(200);
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         updateData();
     }

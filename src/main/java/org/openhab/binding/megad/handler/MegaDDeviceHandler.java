@@ -371,6 +371,12 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                     try {
                                         Thread.sleep(1000);
                                     } catch (InterruptedException ignored) {
+                                        // Restore the flag: dispose() stops this thread with an interrupt and
+                                        // the outer while(!isInterrupted()) is the only thing that ends it.
+                                        // Swallowing it here meant that an interrupt landing during the 1-wire
+                                        // conversion wait was lost, join(1000) timed out and the refresh thread
+                                        // stayed alive forever parked on the orphaned sendQueue.
+                                        Thread.currentThread().interrupt();
                                     }
                                     String response = httpHelper
                                             .request(
@@ -543,6 +549,7 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                                             try {
                                                 Thread.sleep(200);
                                             } catch (InterruptedException ignored) {
+                                                Thread.currentThread().interrupt();
                                             }
                                             megaDPortsHandler.updateChannel(channel.getUID().getId(), response);
                                         }
@@ -699,6 +706,7 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
                 } catch (IOException ignored) {
                 }
             } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
             }
         } else if (channelUID.getId().equals(MegaDBindingConstants.CHANNEL_WRITE_CONF)
                 && command.equals(OnOffType.ON)) {
@@ -1279,6 +1287,7 @@ public class MegaDDeviceHandler extends BaseBridgeHandler {
         } catch (IOException err) {
             logger.warn("error write config...{}", err.getLocalizedMessage());
         } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
         httpHelper.request(megaUrl("restart=1"));
     }
